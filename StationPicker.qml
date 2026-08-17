@@ -14,6 +14,10 @@ Item {
   property var manifest: null
   property bool opened: false
   property string configuredUrl: ""
+  property string configuredInput: ""
+  property bool editingConfigured: false
+  property bool savingConfigured: false
+  property string configuredError: ""
   property var allStations: []
   property string filterText: ""
   property int selectedIndex: 0
@@ -37,6 +41,10 @@ Item {
     var payload = ({})
     try { payload = JSON.parse(payloadJson || "{}") } catch (error) {}
     configuredUrl = StationModel.normalizeOrigin(payload.stationUrl || "")
+    configuredInput = configuredUrl
+    editingConfigured = false
+    savingConfigured = false
+    configuredError = ""
     opened = true
     errorText = ""
     filterText = ""
@@ -92,6 +100,44 @@ Item {
     filterText = StationModel.singleLine(value, 160)
     rebuildVisible()
     queueVisibleProbes()
+  }
+
+  function beginConfiguredEdit() {
+    configuredInput = configuredUrl
+    configuredError = ""
+    editingConfigured = true
+    Qt.callLater(function() { configuredField.forceActiveFocus() })
+  }
+
+  function cancelConfiguredEdit() {
+    configuredInput = configuredUrl
+    configuredError = ""
+    editingConfigured = false
+    Qt.callLater(function() { searchField.forceActiveFocus() })
+  }
+
+  function saveConfigured(value) {
+    if (settingProcess.running) return
+    var update = StationModel.configuredStationUpdate(value)
+    if (!update.ok) {
+      configuredError = update.error
+      return
+    }
+    configuredError = ""
+    savingConfigured = true
+    settingProcess.pendingUrl = update.url
+    settingProcess.command = update.command
+    settingProcess.running = true
+  }
+
+  function applyConfigured(url) {
+    configuredUrl = url
+    configuredInput = url
+    allStations = StationModel.mergeConfigured(allStations, configuredUrl)
+    rebuildVisible()
+    queueVisibleProbes()
+    editingConfigured = false
+    Qt.callLater(function() { searchField.forceActiveFocus() })
   }
 
   function moveSelection(delta) {
@@ -198,6 +244,19 @@ Item {
     }
   }
 
+  Process {
+    id: settingProcess
+    property string pendingUrl: ""
+    command: []
+    stdout: StdioCollector { id: settingOutput; waitForEnd: true }
+    stderr: StdioCollector { id: settingError; waitForEnd: true }
+    onExited: function(exitCode) {
+      root.savingConfigured = false
+      if (exitCode === 0) root.applyConfigured(pendingUrl)
+      else root.configuredError = StationModel.singleLine(settingError.text, 200) || "Could not save station setting"
+    }
+  }
+
   Timer {
     id: probeTimer
     interval: 30000
@@ -257,24 +316,147 @@ Item {
             horizontalAlignment: Text.AlignRight
           }
         }
-
-        TextField {
-          id: searchField
+        Row {
           width: parent.width
-          placeholderText: "Search stations, places, genres…"
-          foreground: root.foreground
-          accent: root.accent
-          font.family: Style.font.menuFamily
-          font.pixelSize: Style.font.body
-          onTextChanged: root.setFilter(text)
-          Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Down) { root.moveSelection(1); event.accepted = true }
-            else if (event.key === Qt.Key_Up) { root.moveSelection(-1); event.accepted = true }
-            else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.playSelected(); event.accepted = true }
-            else if (event.key === Qt.Key_Escape) {
-              if (text) text = ""
-              else root.dismiss()
-              event.accepted = true
+          spacing: Style.spacing.sm
+
+          TextField {
+            id: searchField
+            width: parent.width - configuredButton.width - parent.spacing
+            placeholderText: "Search stations, places, genres…"
+            foreground: root.foreground
+            accent: root.accent
+            font.family: Style.font.menuFamily
+            font.pixelSize: Style.font.body
+            onTextChanged: root.setFilter(text)
+            Keys.onPressed: function(event) {
+              if (event.key === Qt.Key_Down) { root.moveSelection(1); event.accepted = true }
+              else if (event.key === Qt.Key_Up) { root.moveSelection(-1); event.accepted = true }
+              else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.playSelected(); event.accepted = true }
+              else if (event.key === Qt.Key_Escape) {
+                if (text) text = ""
+                else root.dismiss()
+                event.accepted = true
+              }
+            }
+          }
+
+          Button {
+            id: configuredButton
+            text: root.configuredUrl ? "EDIT" : "+ SELF-HOSTED"
+            active: root.configuredUrl !== ""
+            focusable: true
+            bordered: true
+            foreground: root.foreground
+            accent: root.accent
+            fontFamily: Style.font.menuFamily
+            fontSize: Style.font.caption
+            onClicked: root.editingConfigured ? root.cancelConfiguredEdit() : root.beginConfiguredEdit()
+          }
+        }
+
+        BorderSurface {
+          visible: root.editingConfigured
+          width: parent.width
+          implicitHeight: configuredEditor.implicitHeight + Style.spacing.md * 2
+          color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.035)
+          radius: Style.cornerRadius
+          borderSpec: Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10), 1)
+
+          Column {
+            id: configuredEditor
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.leftMargin: Style.spacing.md
+            anchors.rightMargin: Style.spacing.md
+            spacing: Style.spacing.sm
+
+            Text {
+              width: parent.width
+              text: "SELF-HOSTED STATION"
+              color: root.foreground
+              opacity: 0.62
+              font.family: Style.font.menuFamily
+              font.pixelSize: Style.font.caption
+              font.bold: true
+            }
+
+            Row {
+              width: parent.width
+              spacing: Style.spacing.sm
+
+              TextField {
+                id: configuredField
+                width: parent.width - saveConfiguredButton.width - cancelConfiguredButton.width
+                  - (removeConfiguredButton.visible ? removeConfiguredButton.width + parent.spacing : 0)
+                  - parent.spacing * 2
+                enabled: !root.savingConfigured
+                text: root.configuredInput
+                placeholderText: "https://radio.example.com"
+                foreground: root.foreground
+                accent: root.accent
+                font.family: Style.font.menuFamily
+                font.pixelSize: Style.font.body
+                onTextChanged: root.configuredInput = text
+                Keys.onPressed: function(event) {
+                  if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                    root.saveConfigured(text)
+                    event.accepted = true
+                  } else if (event.key === Qt.Key_Escape) {
+                    root.cancelConfiguredEdit()
+                    event.accepted = true
+                  }
+                }
+              }
+
+              Button {
+                id: saveConfiguredButton
+                text: root.savingConfigured ? "SAVING" : "SAVE"
+                enabled: !root.savingConfigured
+                focusable: true
+                bordered: true
+                foreground: root.foreground
+                accent: root.accent
+                fontFamily: Style.font.menuFamily
+                fontSize: Style.font.caption
+                onClicked: root.saveConfigured(configuredField.text)
+              }
+
+              Button {
+                id: removeConfiguredButton
+                visible: root.configuredUrl !== ""
+                text: "REMOVE"
+                enabled: !root.savingConfigured
+                focusable: true
+                foreground: Color.urgent
+                accent: Color.urgent
+                fontFamily: Style.font.menuFamily
+                fontSize: Style.font.caption
+                onClicked: root.saveConfigured("")
+              }
+
+              Button {
+                id: cancelConfiguredButton
+                text: "CANCEL"
+                enabled: !root.savingConfigured
+                focusable: true
+                foreground: root.foreground
+                accent: root.accent
+                fontFamily: Style.font.menuFamily
+                fontSize: Style.font.caption
+                onClicked: root.cancelConfiguredEdit()
+              }
+            }
+
+            Text {
+              visible: root.configuredError !== ""
+              width: parent.width
+              text: root.configuredError
+              color: Color.urgent
+              font.family: Style.font.menuFamily
+              font.pixelSize: Style.font.caption
+              wrapMode: Text.Wrap
             }
           }
         }

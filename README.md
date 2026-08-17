@@ -26,7 +26,8 @@ MPRIS integration, and local MPV control socket. The plugin does not install or
 modify system packages itself.
 
 The community directory works immediately. To put your own self-hosted station
-first in the list, configure its bare public origin:
+first in the list, open the picker, choose **+ SELF-HOSTED**, and save its bare
+public origin. You can configure the same setting from the terminal:
 
 ```bash
 omarchy bar set getsubwave.radio stationUrl https://radio.example.com
