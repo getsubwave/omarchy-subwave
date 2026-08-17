@@ -1,0 +1,51 @@
+import assert from "node:assert/strict"
+import fs from "node:fs"
+import path from "node:path"
+import vm from "node:vm"
+import { fileURLToPath } from "node:url"
+
+const testDir = path.dirname(fileURLToPath(import.meta.url))
+const source = fs.readFileSync(path.join(testDir, "..", "StationModel.js"), "utf8")
+// QML's JavaScript engine does not provide the browser/Node URL constructor.
+const model = { Array, Boolean, JSON, Math, Number, Object, RegExp, String }
+vm.createContext(model)
+vm.runInContext(source, model)
+
+assert.equal(model.normalizeOrigin(" https://radio.example.com/path/ "), "https://radio.example.com")
+assert.equal(model.normalizeOrigin("http://radio.example.com:7700"), "http://radio.example.com:7700")
+assert.equal(model.normalizeOrigin("https://user:pass@radio.example.com"), "")
+assert.equal(model.normalizeOrigin("file:///tmp/stream"), "")
+assert.equal(model.normalizeOrigin("https://radio.example.com/#secret"), "")
+assert.equal(model.normalizeOrigin("https://radio.example.com/\nnext"), "")
+
+const rows = model.normalizeCatalog([
+  { slug: "zeta", name: "Zeta", url: "https://zeta.example", genre: "Jazz" },
+  { slug: "featured", name: "Featured", url: "https://featured.example", featured: true },
+  { slug: "bad", name: "", url: "https://bad.example" },
+  { slug: "creds", name: "Creds", url: "https://u:p@bad.example" }
+])
+assert.deepEqual(Array.from(rows, row => row.slug), ["featured", "zeta"])
+
+const merged = model.mergeConfigured(rows, "https://zeta.example/listen")
+assert.equal(merged.length, 2)
+assert.equal(merged[0].slug, "zeta")
+assert.equal(merged[0].isConfigured, true)
+
+const synthetic = model.mergeConfigured(rows, "https://mine.example")
+assert.equal(synthetic[0].slug, "__configured")
+assert.equal(synthetic[0].name, "My station")
+assert.equal(synthetic[0].url, "https://mine.example")
+
+assert.deepEqual(
+  Array.from(model.searchStations(synthetic, "jazz"), row => row.slug),
+  ["zeta"]
+)
+assert.equal(model.searchStations(synthetic, "").length, 3)
+assert.equal(model.normalizeCatalog(Array.from({ length: 250 }, (_, i) => ({
+  slug: `s-${i}`, name: `Station ${i}`, url: `https://s-${i}.example`
+}))).length, 200)
+
+assert.equal(model.singleLine(" a\n\tb ", 20), "a b")
+assert.equal(model.singleLine("abcdef", 3), "abc")
+
+console.log("StationModel tests passed")

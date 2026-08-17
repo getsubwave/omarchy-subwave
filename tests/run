@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+node "$root/tests/model.test.mjs"
+bash "$root/tests/fetch.test.sh"
+bash "$root/tests/player.test.sh"
+
+if command -v omarchy >/dev/null 2>&1; then
+  omarchy plugin validate "$root"
+fi
+if command -v qmllint >/dev/null 2>&1; then
+  qmllint -I /usr/share/omarchy/shell "$root/BarWidget.qml" "$root/StationPicker.qml"
+fi

@@ -1,0 +1,30 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install test dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq socat
+      - name: Validate manifest contract
+        run: |
+          jq -e '
+            .schemaVersion == 1
+            and .id == "getsubwave.radio"
+            and (.kinds | sort) == (["bar-widget", "overlay"] | sort)
+            and .entryPoints.barWidget == "BarWidget.qml"
+            and .entryPoints.overlay == "StationPicker.qml"
+          ' manifest.json
+          test -x subwave-fetch
+          test -x subwave-player
+          test -x tests/run
+      - name: Run tests
+        run: ./tests/run
