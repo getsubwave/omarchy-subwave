@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+data_root=${XDG_DATA_HOME:-$HOME/.local/share}
+data_dir="$data_root/omarchy-subwave"
+cache_file="$data_dir/catalog.json"
+catalog_url=${SUBWAVE_CATALOG_URL:-https://www.getsubwave.com/stations.json}
+max_catalog_bytes=1048576
+max_now_bytes=262144
+install -d -m 700 "$data_dir"
+version=$(jq -r '.version // "0.0.0"' "$script_dir/manifest.json" 2>/dev/null || printf '0.0.0')
+user_agent="Omarchy SUB/WAVE/$version"
+
+normalize_origin() {
+  local raw=${1:-}
+  [[ -n $raw && ! $raw =~ [[:cntrl:]] ]] || return 1
+  if [[ $raw =~ ^(https?)://([^/@?#[:space:]]+)(/[^?#]*)?/?$ ]]; then
+    printf '%s://%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+    return 0
+  fi
+  return 1
+}
+
+valid_cache() {
+  [[ -s $cache_file ]] \
+    && (( $(stat -c '%s' -- "$cache_file") <= max_catalog_bytes )) \
+    && jq -e 'type == "array" and length <= 200' "$cache_file" >/dev/null 2>&1
+}
+
+emit_cache() {
+  if valid_cache; then cat "$cache_file"; else printf '[]\n'; fi
+}
+
+normalize_catalog() {
+  jq -c '
+    def line($n): tostring | gsub("[\u0000-\u001f\u007f]"; " ") | gsub("[ \t]+"; " ") | ltrimstr(" ") | rtrimstr(" ") | .[0:$n];
+    def origin:
+      select(type == "string")
+      | try capture("^(?<scheme>https?)://(?<host>[^/@?#[:space:]]+)(?:/[^?#]*)?/?$") catch null
+      | select(. != null)
+      | "\(.scheme)://\(.host)";
+    if type != "array" then error("catalog is not an array") else . end
+    | map(
+        . as $row
+        | (($row.name // "") | line(160)) as $name
+        | (($row.url // "") | origin) as $url
+        | select($name != "" and $url != "")
+        | {
+            slug: (($row.slug // ($name | ascii_downcase | gsub("[^a-z0-9]+"; "-") | ltrimstr("-") | rtrimstr("-"))) | line(49)),
+            name: $name,
+            url: $url,
+            location: (($row.location // "") | line(160)),
+            country: (($row.country // "") | line(100)),
+            operator: (($row.operator // "") | line(100)),
+            genre: (($row.genre // "") | line(160)),
+            description: (($row.description // "") | line(512)),
+            featured: ($row.featured == true),
+            submitted: (($row.submitted // "") | line(32)),
+            isConfigured: false
+          }
+      )
+    | sort_by([if .featured then 0 else 1 end, (.name | ascii_downcase)])
+    | reduce .[] as $row ([]; if any(.[]; .url == $row.url) then . else . + [$row] end)
+    | .[:200]
+  '
+}
+
+write_cache() {
+  local source=$1 temporary
+  temporary=$(mktemp "$data_dir/.catalog.XXXXXX")
+  install -m 600 "$source" "$temporary"
+  mv -f "$temporary" "$cache_file"
+}
+
+fetch_catalog() {
+  local download normalized
+  download=$(mktemp "$data_dir/.download.XXXXXX")
+  normalized=$(mktemp "$data_dir/.normalized.XXXXXX")
+  trap 'rm -f "$download" "$normalized"' RETURN
+  if ! curl --fail --silent --show-error --location \
+      --proto '=https' --proto-redir '=https' \
+      --connect-timeout 4 --max-time 10 --max-filesize "$max_catalog_bytes" \
+      --user-agent "$user_agent" --output "$download" "$catalog_url"; then
+    emit_cache
+    valid_cache
+    return
+  fi
+  if (( $(stat -c '%s' -- "$download") > max_catalog_bytes )) \
+      || ! normalize_catalog <"$download" >"$normalized"; then
+    emit_cache
+    valid_cache
+    return
+  fi
+  write_cache "$normalized"
+  cat "$cache_file"
+}
+
+offline_json() {
+  jq -cn '{online:false,station:"",dj:"",show:"",title:"",artist:"",album:"",coverUrl:"",listeners:null,error:"Station unavailable"}'
+}
+
+fetch_now_playing() {
+  local origin scheme response
+  if ! origin=$(normalize_origin "${1:-}"); then
+    offline_json
+    return 2
+  fi
+  scheme=${origin%%:*}
+  response=$(mktemp "$data_dir/.now.XXXXXX")
+  trap 'rm -f "$response"' RETURN
+  if ! curl --fail --silent --show-error --location \
+      --proto "=$scheme" --proto-redir "=$scheme" \
+      --connect-timeout 3 --max-time 6 --max-filesize "$max_now_bytes" \
+      --user-agent "$user_agent" --output "$response" "$origin/api/now-playing" \
+      || (( $(stat -c '%s' -- "$response") > max_now_bytes )); then
+    offline_json
+    return 3
+  fi
+  if ! jq -ce --arg origin "$origin" '
+      def line($n): tostring | gsub("[\u0000-\u001f\u007f]"; " ") | gsub("[ \t]+"; " ") | ltrimstr(" ") | rtrimstr(" ") | .[0:$n];
+      if type != "object" then error("invalid now-playing") else . end
+      | (.nowPlaying // {}) as $np
+      | ($np.subsonic_id // "") as $id
+      | {
+          online: (.streamOnline != false),
+          station: ((.dj.station // "") | line(160)),
+          dj: ((.dj.name // "") | line(100)),
+          show: ((.activeShow.name // "") | line(160)),
+          title: (($np.title // "") | line(512)),
+          artist: (($np.artist // "") | line(512)),
+          album: (($np.album // "") | line(512)),
+          coverUrl: (if ($id | type == "string" and test("^[A-Za-z0-9_-]{1,64}$")) then ($origin + "/api/cover/" + $id) else "" end),
+          listeners: ((if (.listeners | type) == "number" then .listeners elif (.listeners.current | type) == "number" then .listeners.current else null end) as $n | if $n != null and $n >= 0 then ($n | floor) else null end),
+          error: ""
+        }
+    ' "$response"; then
+    offline_json
+    return 4
+  fi
+}
+
+case ${1:-} in
+  cache) emit_cache ;;
+  catalog) fetch_catalog ;;
+  now-playing) fetch_now_playing "${2:-}" ;;
+  *) echo "Usage: subwave-fetch cache|catalog|now-playing <origin>" >&2; exit 2 ;;
+esac
