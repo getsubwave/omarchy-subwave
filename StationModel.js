@@ -25,6 +25,22 @@ function configuredStationUpdate(value) {
   }
 }
 
+function barTooltip(value) {
+  var state = value && typeof value === "object" ? value : ({})
+  var station = singleLine(state.stationName, 160) || "SUB/WAVE"
+  var title = singleLine(state.trackTitle, MAX_FIELD)
+  var artist = singleLine(state.trackArtist, MAX_FIELD)
+  var volume = Math.max(0, Math.min(100, Math.round(Number(state.volume) || 0)))
+  var status = state.running === true ? (state.paused === true ? "Paused" : "Playing") : "Open"
+  var details = station + " · " + status + " · " + volume + "%"
+  return title ? title + (artist ? " — " + artist : "") + "\n" + details : station + "\n" + status + " · " + volume + "%"
+}
+
+function webPlayerCommand(value) {
+  var origin = normalizeOrigin(value)
+  return origin ? ["omarchy", "launch", "browser", origin] : []
+}
+
 function fallbackSlug(name) {
   return singleLine(name, 80).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 49)
 }

@@ -23,6 +23,17 @@ BarWidget {
   readonly property string label: trackTitle
     ? trackTitle + (trackArtist ? " · " + trackArtist : "")
     : stationName
+  readonly property bool tooltipHovered: interactionArea.containsMouse
+  readonly property string tooltipText: StationModel.barTooltip({
+    running: playerRunning,
+    paused: playerPaused,
+    stationName: stationName,
+    trackTitle: trackTitle,
+    trackArtist: trackArtist,
+    volume: playerVolume
+  })
+
+  onTooltipTextChanged: if (tooltipHovered && bar) bar.showTooltip(root, tooltipText)
 
   function applyStatus(raw) {
     try {
@@ -134,6 +145,7 @@ BarWidget {
   }
 
   MouseArea {
+    id: interactionArea
     anchors.fill: parent
     hoverEnabled: true
     acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
@@ -144,10 +156,7 @@ BarWidget {
       else root.toggleOverlay()
     }
     onWheel: function(wheel) { root.changeVolume(wheel.angleDelta.y) }
-    onEntered: if (root.bar) root.bar.showTooltip(root,
-      (root.playerRunning ? (root.playerPaused ? "Paused · " : "Playing · ") : "Open · ")
-      + root.stationName + (root.trackTitle ? "\n" + root.label : "")
-      + " · " + root.playerVolume + "%")
+    onEntered: if (root.bar) root.bar.showTooltip(root, root.tooltipText)
     onExited: if (root.bar) root.bar.hideTooltip(root)
   }
 }

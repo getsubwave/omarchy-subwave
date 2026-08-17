@@ -38,6 +38,36 @@ assert.deepEqual(
 assert.equal(model.configuredStationUpdate("https://user:pass@radio.example.com").ok, false)
 assert.equal(model.configuredStationUpdate("file:///tmp/stream").ok, false)
 
+assert.equal(typeof model.barTooltip, "function")
+assert.equal(model.barTooltip({
+  running: true,
+  paused: false,
+  stationName: "ChillWave",
+  trackTitle: "Wish We Had History",
+  trackArtist: "Bexy",
+  volume: 65
+}), "Wish We Had History — Bexy\nChillWave · Playing · 65%")
+assert.equal(model.barTooltip({
+  running: false,
+  stationName: "SUB/WAVE",
+  volume: 70
+}), "SUB/WAVE\nOpen · 70%")
+assert.equal(model.barTooltip({
+  running: true,
+  paused: true,
+  stationName: "Chill\nWave",
+  trackTitle: "Track\nName",
+  volume: 101
+}), "Track Name\nChill Wave · Paused · 100%")
+
+assert.equal(typeof model.webPlayerCommand, "function")
+assert.deepEqual(
+  Array.from(model.webPlayerCommand("https://radio.example.com/listen")),
+  ["omarchy", "launch", "browser", "https://radio.example.com"]
+)
+assert.deepEqual(Array.from(model.webPlayerCommand("https://user:pass@radio.example.com")), [])
+assert.deepEqual(Array.from(model.webPlayerCommand("javascript:alert(1)")), [])
+
 const rows = model.normalizeCatalog([
   { slug: "zeta", name: "Zeta", url: "https://zeta.example", genre: "Jazz" },
   { slug: "featured", name: "Featured", url: "https://featured.example", featured: true },

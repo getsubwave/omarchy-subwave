@@ -160,6 +160,11 @@ Item {
     playProcess.running = true
   }
 
+  function openWebPlayer(url) {
+    var command = StationModel.webPlayerCommand(url)
+    if (command.length) Quickshell.execDetached(command)
+  }
+
   function queueVisibleProbes() {
     var next = []
     var limit = Math.min(24, visibleStations.count)
@@ -541,8 +546,8 @@ Item {
 
             Text {
               id: status
-              anchors.right: parent.right
-              anchors.rightMargin: Style.space(14)
+              anchors.right: webPlayerButton.left
+              anchors.rightMargin: Style.space(10)
               anchors.verticalCenter: parent.verticalCenter
               text: root.playingUrl === url ? "PLAYING" : (!live ? "CHECKING" : (live.online ? "ON AIR" : "OFFLINE"))
               color: live && live.online ? root.accent : root.foreground
@@ -550,6 +555,24 @@ Item {
               font.family: Style.font.menuFamily
               font.pixelSize: Style.font.caption
               font.bold: true
+            }
+
+            Button {
+              id: webPlayerButton
+              z: 1
+              anchors.right: parent.right
+              anchors.rightMargin: Style.space(8)
+              anchors.verticalCenter: parent.verticalCenter
+              text: "↗"
+              tooltipText: "Open web player"
+              focusable: true
+              foreground: root.foreground
+              accent: root.accent
+              fontFamily: Style.font.menuFamily
+              fontSize: Style.font.body
+              horizontalPadding: Style.spacing.controlGap
+              verticalPadding: Style.spacing.labelGap
+              onClicked: root.openWebPlayer(url)
             }
           }
 
