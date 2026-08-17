@@ -22,6 +22,7 @@ jobs:
             and (.kinds | sort) == (["bar-widget", "overlay"] | sort)
             and .entryPoints.barWidget == "BarWidget.qml"
             and .entryPoints.overlay == "StationPicker.qml"
+            and .barWidget.defaultSection == "left"
           ' manifest.json
           test -x subwave-fetch
           test -x subwave-player

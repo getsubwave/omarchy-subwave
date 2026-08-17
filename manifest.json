@@ -5,10 +5,10 @@
   "version": "0.1.0",
   "author": "SUB/WAVE",
   "license": "MIT",
-  "description": "Listen to your SUB/WAVE station and discover community stations from the Omarchy bar.",
+  "description": "Tune into self-hosted AI DJ radio and discover public SUB/WAVE community stations.",
   "homepage": "https://github.com/getsubwave/omarchy-subwave",
   "repository": "https://github.com/getsubwave/omarchy-subwave",
-  "keywords": ["radio", "subwave", "music", "mpris"],
+  "keywords": ["radio", "subwave", "music", "mpris", "ai", "self-hosted"],
   "kinds": ["overlay", "bar-widget"],
   "keepLoaded": true,
   "entryPoints": {

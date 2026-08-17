@@ -7,6 +7,14 @@ that works with Omarchy's existing media controls.
 
 ![SUB/WAVE station picker in Omarchy](preview.png)
 
+## What is SUB/WAVE?
+
+SUB/WAVE is a self-hosted shared internet radio station: every listener hears
+the same live broadcast. An AI DJ selects music from the station's library and
+speaks between tracks, while the operator controls its sound, schedule,
+personas, and listener requests. This Omarchy plugin lets you tune into your own
+station or discover other public SUB/WAVE stations.
+
 ## Install
 
 ```bash
@@ -54,6 +62,7 @@ fragment. The plugin derives the API and stream paths from the origin.
 | Type | Search names, places, genres, operators, and descriptions |
 | Up / Down | Move through stations |
 | Enter | Play the selected station |
+| ↗ button | Open that station in its web player without interrupting playback |
 | Escape | Clear search, then close |
 
 Selecting the station that is already playing closes the picker. Playback uses
