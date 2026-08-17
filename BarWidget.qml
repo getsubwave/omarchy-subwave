@@ -79,7 +79,7 @@ BarWidget {
     nowProcess.running = true
   }
 
-  implicitWidth: row.implicitWidth + Style.space(14)
+  implicitWidth: Style.space(32)
   implicitHeight: barSize
 
   FileView {
@@ -121,30 +121,16 @@ BarWidget {
     onTriggered: root.refreshNowPlaying()
   }
 
-  Row {
-    id: row
+  SubwaveMark {
+    id: mark
     anchors.centerIn: parent
-    spacing: Style.space(6)
+    width: Math.min(Style.space(20), root.barSize - Style.space(6))
+    height: width
+    opacity: root.playerRunning
+      ? (!root.playerPaused && root.stationOnline ? 1 : 0.55)
+      : 0.82
 
-    Text {
-      anchors.verticalCenter: parent.verticalCenter
-      text: "󰝚"
-      color: root.playerRunning && !root.playerPaused && root.stationOnline
-        ? Color.accent : root.bar.barForeground
-      font.family: root.bar.fontFamily
-      font.pixelSize: Style.font.body
-    }
-
-    Text {
-      visible: !root.vertical
-      width: Math.min(implicitWidth, Style.space(180))
-      anchors.verticalCenter: parent.verticalCenter
-      text: root.label
-      color: root.bar.barForeground
-      font.family: root.bar.fontFamily
-      font.pixelSize: Style.font.body
-      elide: Text.ElideRight
-    }
+    Behavior on opacity { NumberAnimation { duration: 120 } }
   }
 
   MouseArea {
