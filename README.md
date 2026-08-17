@@ -5,6 +5,8 @@ the public community directory without leaving the Omarchy shell. The plugin
 adds a theme-aware bar widget, a searchable station picker, and an MPV player
 that works with Omarchy's existing media controls.
 
+![SUB/WAVE station picker in Omarchy](preview.png)
+
 ## Install
 
 ```bash
