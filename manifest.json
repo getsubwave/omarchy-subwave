@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "getsubwave.radio",
+  "name": "SUB/WAVE Radio",
+  "version": "0.1.0",
+  "author": "SUB/WAVE",
+  "license": "MIT",
+  "description": "Listen to your SUB/WAVE station and discover community stations from the Omarchy bar.",
+  "homepage": "https://github.com/getsubwave/omarchy-subwave",
+  "repository": "https://github.com/getsubwave/omarchy-subwave",
+  "keywords": ["radio", "subwave", "music", "mpris"],
+  "kinds": ["overlay", "bar-widget"],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "StationPicker.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "SUB/WAVE Radio",
+    "description": "SUB/WAVE community radio player",
+    "category": "Media",
+    "allowMultiple": false,
+    "defaultSection": "left"
+  }
+}
