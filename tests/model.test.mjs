@@ -18,6 +18,26 @@ assert.equal(model.normalizeOrigin("file:///tmp/stream"), "")
 assert.equal(model.normalizeOrigin("https://radio.example.com/#secret"), "")
 assert.equal(model.normalizeOrigin("https://radio.example.com/\nnext"), "")
 
+assert.equal(typeof model.configuredStationUpdate, "function")
+assert.deepEqual(
+  JSON.parse(JSON.stringify(model.configuredStationUpdate(" https://radio.example.com/listen "))),
+  {
+    ok: true,
+    url: "https://radio.example.com",
+    command: ["omarchy", "bar", "set", "getsubwave.radio", "stationUrl", "https://radio.example.com"]
+  }
+)
+assert.deepEqual(
+  JSON.parse(JSON.stringify(model.configuredStationUpdate(""))),
+  {
+    ok: true,
+    url: "",
+    command: ["omarchy", "bar", "set", "getsubwave.radio", "stationUrl", ""]
+  }
+)
+assert.equal(model.configuredStationUpdate("https://user:pass@radio.example.com").ok, false)
+assert.equal(model.configuredStationUpdate("file:///tmp/stream").ok, false)
+
 const rows = model.normalizeCatalog([
   { slug: "zeta", name: "Zeta", url: "https://zeta.example", genre: "Jazz" },
   { slug: "featured", name: "Featured", url: "https://featured.example", featured: true },
@@ -35,6 +55,14 @@ const synthetic = model.mergeConfigured(rows, "https://mine.example")
 assert.equal(synthetic[0].slug, "__configured")
 assert.equal(synthetic[0].name, "My station")
 assert.equal(synthetic[0].url, "https://mine.example")
+
+const reconfigured = model.mergeConfigured(synthetic, "https://featured.example")
+assert.equal(reconfigured.length, 2)
+assert.equal(reconfigured[0].url, "https://featured.example")
+assert.equal(reconfigured.filter(row => row.isConfigured).length, 1)
+const cleared = model.mergeConfigured(reconfigured, "")
+assert.equal(cleared.length, 2)
+assert.equal(cleared.filter(row => row.isConfigured).length, 0)
 
 assert.deepEqual(
   Array.from(model.searchStations(synthetic, "jazz"), row => row.slug),

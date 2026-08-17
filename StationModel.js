@@ -14,6 +14,17 @@ function normalizeOrigin(value) {
   return matched[1].toLowerCase() + "://" + matched[2]
 }
 
+function configuredStationUpdate(value) {
+  var raw = String(value || "").trim()
+  var url = raw ? normalizeOrigin(raw) : ""
+  if (raw && !url) return { ok: false, error: "Enter a bare HTTP(S) station origin" }
+  return {
+    ok: true,
+    url: url,
+    command: ["omarchy", "bar", "set", "getsubwave.radio", "stationUrl", url]
+  }
+}
+
 function fallbackSlug(name) {
   return singleLine(name, 80).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 49)
 }
@@ -60,13 +71,18 @@ function normalizeCatalog(value) {
 }
 
 function mergeConfigured(stations, stationUrl) {
-  var rows = normalizeCatalog(stations)
+  var normalized = normalizeCatalog(stations)
+  var rows = []
+  for (var i = 0; i < normalized.length; i++) {
+    if (normalized[i].slug === "__configured") continue
+    rows.push(Object.assign({}, normalized[i], { isConfigured: false }))
+  }
   var origin = normalizeOrigin(stationUrl)
   if (!origin) return rows
-  for (var i = 0; i < rows.length; i++) {
-    if (rows[i].url !== origin) continue
-    var matched = Object.assign({}, rows[i], { isConfigured: true })
-    rows.splice(i, 1)
+  for (var matchIndex = 0; matchIndex < rows.length; matchIndex++) {
+    if (rows[matchIndex].url !== origin) continue
+    var matched = Object.assign({}, rows[matchIndex], { isConfigured: true })
+    rows.splice(matchIndex, 1)
     rows.unshift(matched)
     return rows
   }
