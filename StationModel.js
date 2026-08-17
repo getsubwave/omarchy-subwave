@@ -9,14 +9,9 @@ function singleLine(value, limit) {
 function normalizeOrigin(value) {
   var raw = String(value || "").trim()
   if (!raw || /[\u0000-\u001f\u007f]/.test(raw)) return ""
-  try {
-    var parsed = new URL(raw)
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return ""
-    if (parsed.username || parsed.password || parsed.hash) return ""
-    return parsed.origin
-  } catch (error) {
-    return ""
-  }
+  var matched = raw.match(/^(https?):\/\/([^\/@?#\s]+)(?:\/[^?#]*)?\/?$/i)
+  if (!matched) return ""
+  return matched[1].toLowerCase() + "://" + matched[2]
 }
 
 function fallbackSlug(name) {

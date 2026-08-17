@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url"
 
 const testDir = path.dirname(fileURLToPath(import.meta.url))
 const source = fs.readFileSync(path.join(testDir, "..", "StationModel.js"), "utf8")
-const model = { Array, Boolean, JSON, Math, Number, Object, RegExp, String, URL }
+// QML's JavaScript engine does not provide the browser/Node URL constructor.
+const model = { Array, Boolean, JSON, Math, Number, Object, RegExp, String }
 vm.createContext(model)
 vm.runInContext(source, model)
 
