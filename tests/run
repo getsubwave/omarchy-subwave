@@ -6,6 +6,14 @@ node "$root/tests/model.test.mjs"
 bash "$root/tests/fetch.test.sh"
 bash "$root/tests/player.test.sh"
 
+if [[ -x /usr/lib/qt6/bin/qmltestrunner ]]; then
+  QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
+    /usr/lib/qt6/bin/qmltestrunner \
+    -input "$root/tests/tst_subwavemark.qml" \
+    -import "$root" \
+    -o -,txt
+fi
+
 if command -v omarchy >/dev/null 2>&1; then
   omarchy plugin validate "$root"
 fi
