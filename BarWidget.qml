@@ -95,21 +95,21 @@ BarWidget {
     id: statusProcess
     command: [root.playerPath, "status"]
     running: true
-    stdout: StdioCollector { id: statusOutput }
+    stdout: StdioCollector { id: statusOutput; waitForEnd: true }
     onExited: root.applyStatus(statusOutput.text)
   }
 
   Process {
     id: actionProcess
     command: []
-    stdout: StdioCollector { id: actionOutput }
+    stdout: StdioCollector { id: actionOutput; waitForEnd: true }
     onExited: root.applyStatus(actionOutput.text)
   }
 
   Process {
     id: nowProcess
     command: []
-    stdout: StdioCollector { id: nowOutput }
+    stdout: StdioCollector { id: nowOutput; waitForEnd: true }
     onExited: root.applyNowPlaying(nowOutput.text)
   }
 

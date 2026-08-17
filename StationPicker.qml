@@ -156,7 +156,7 @@ Item {
   Process {
     id: cacheProcess
     command: []
-    stdout: StdioCollector { id: cacheOutput }
+    stdout: StdioCollector { id: cacheOutput; waitForEnd: true }
     onExited: {
       root.applyCatalog(cacheOutput.text)
       root.refreshCatalog()
@@ -166,7 +166,7 @@ Item {
   Process {
     id: catalogProcess
     command: []
-    stdout: StdioCollector { id: catalogOutput }
+    stdout: StdioCollector { id: catalogOutput; waitForEnd: true }
     onExited: function(exitCode) {
       if (exitCode === 0) root.applyCatalog(catalogOutput.text)
       else if (root.allStations.length === 0) root.errorText = "Could not refresh the station directory"
@@ -176,7 +176,7 @@ Item {
   Process {
     id: probeProcess
     command: []
-    stdout: StdioCollector { id: probeOutput }
+    stdout: StdioCollector { id: probeOutput; waitForEnd: true }
     onExited: {
       root.applyProbe(root.probingUrl, probeOutput.text)
       root.probingUrl = ""
@@ -188,8 +188,8 @@ Item {
     id: playProcess
     property string stationUrl: ""
     command: []
-    stdout: StdioCollector { id: playOutput }
-    stderr: StdioCollector { id: playError }
+    stdout: StdioCollector { id: playOutput; waitForEnd: true }
+    stderr: StdioCollector { id: playError; waitForEnd: true }
     onExited: function(exitCode) {
       if (exitCode === 0) {
         root.playingUrl = stationUrl
