@@ -4,6 +4,7 @@ set -euo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 node "$root/tests/model.test.mjs"
 bash "$root/tests/fetch.test.sh"
+bash "$root/tests/player.test.sh"
 
 if command -v omarchy >/dev/null 2>&1; then
   omarchy plugin validate "$root"

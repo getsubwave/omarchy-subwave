@@ -1,0 +1,236 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+: "${XDG_RUNTIME_DIR:?SUB/WAVE requires XDG_RUNTIME_DIR}"
+runtime_dir="$XDG_RUNTIME_DIR/omarchy-subwave"
+data_root=${XDG_DATA_HOME:-$HOME/.local/share}
+data_dir="$data_root/omarchy-subwave"
+state_file="$data_dir/state.json"
+socket="$runtime_dir/mpv.sock"
+pid_file="$runtime_dir/player.pid"
+station_file="$runtime_dir/station.json"
+status_file="$runtime_dir/status.json"
+log_file="$runtime_dir/mpv.log"
+install -d -m 700 "$runtime_dir" "$data_dir"
+exec 8>"$runtime_dir/player.lock"
+
+normalize_origin() {
+  local raw=${1:-}
+  [[ -n $raw && ! $raw =~ [[:cntrl:]] ]] || return 1
+  if [[ $raw =~ ^(https?)://([^/@?#[:space:]]+)(/[^?#]*)?/?$ ]]; then
+    printf '%s://%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+    return 0
+  fi
+  return 1
+}
+
+process_start_time() {
+  local pid=$1
+  [[ -r /proc/$pid/stat ]] || return 1
+  awk '$3 != "Z" { print $22 }' "/proc/$pid/stat" 2>/dev/null
+}
+
+player_alive() {
+  local pid expected actual
+  [[ -s $pid_file ]] || return 1
+  read -r pid expected <"$pid_file" || return 1
+  [[ $pid =~ ^[0-9]+$ && $expected =~ ^[0-9]+$ ]] || return 1
+  kill -0 "$pid" 2>/dev/null || return 1
+  actual=$(process_start_time "$pid") || return 1
+  [[ $actual == "$expected" ]]
+}
+
+valid_state() {
+  [[ -s $state_file ]] && (( $(stat -c '%s' -- "$state_file") <= 65536 )) \
+    && jq -e 'type == "object" and ((.volume // 70) | type == "number")' "$state_file" >/dev/null 2>&1
+}
+
+read_state() {
+  if valid_state; then
+    jq -c '{volume: ((.volume // 70) | floor | if . < 0 then 0 elif . > 100 then 100 else . end), lastStation: (.lastStation // {url:"",name:""})}' "$state_file"
+  else
+    jq -cn '{volume:70,lastStation:{url:"",name:""}}'
+  fi
+}
+
+write_state() {
+  local json=$1 temporary
+  temporary=$(mktemp "$data_dir/.state.XXXXXX")
+  printf '%s\n' "$json" >"$temporary"
+  chmod 600 "$temporary"
+  mv -f "$temporary" "$state_file"
+}
+
+configured_volume() {
+  read_state | jq -r '.volume'
+}
+
+current_station() {
+  if [[ -s $station_file ]] && (( $(stat -c '%s' -- "$station_file") <= 65536 )) \
+      && jq -e 'type == "object" and (.url | type == "string")' "$station_file" >/dev/null 2>&1; then
+    cat "$station_file"
+  else
+    jq -cn '{name:"",url:""}'
+  fi
+}
+
+write_station() {
+  local origin=$1 name=$2 temporary state
+  temporary=$(mktemp "$runtime_dir/.station.XXXXXX")
+  jq -cn --arg url "$origin" --arg name "$name" '{name:($name | gsub("[\\r\\n\\t]";" ") | .[:160]),url:$url}' >"$temporary"
+  mv -f "$temporary" "$station_file"
+  state=$(read_state | jq -c --argjson station "$(cat "$station_file")" '.lastStation = $station')
+  write_state "$state"
+}
+
+cleanup_stale() {
+  player_alive && return 0
+  rm -f "$pid_file" "$socket" "$station_file"
+  return 1
+}
+
+send_command() {
+  local payload=$1 response request_id=7101
+  [[ -S $socket ]] || return 1
+  payload=$(jq -c --argjson id "$request_id" '. + {request_id:$id}' <<<"$payload")
+  response=$(printf '%s\n' "$payload" | socat -T 1 - "UNIX-CONNECT:$socket" 2>/dev/null | head -c 65537) || return 1
+  (( ${#response} <= 65536 )) || return 1
+  jq -e --argjson id "$request_id" 'select(.request_id == $id and .error == "success")' <<<"$response" >/dev/null || return 1
+  printf '%s\n' "$response"
+}
+
+property() {
+  local name=$1 payload
+  payload=$(jq -cn --arg name "$name" '{command:["get_property",$name]}')
+  send_command "$payload" | jq -c '.data'
+}
+
+write_status() {
+  local json=$1 temporary
+  temporary=$(mktemp "$runtime_dir/.status.XXXXXX")
+  printf '%s\n' "$json" >"$temporary"
+  mv -f "$temporary" "$status_file"
+  printf '%s\n' "$json"
+}
+
+status() {
+  local volume station paused=false
+  volume=$(configured_volume)
+  if ! player_alive || [[ ! -S $socket ]]; then
+    cleanup_stale || true
+    write_status "$(jq -cn --argjson volume "$volume" '{running:false,paused:false,volume:$volume,station:{name:"",url:""},error:""}')"
+    return
+  fi
+  paused=$(property pause 2>/dev/null || printf false)
+  volume=$(property volume 2>/dev/null || printf '%s' "$volume")
+  station=$(current_station)
+  write_status "$(jq -cn --argjson paused "$paused" --argjson volume "$volume" --argjson station "$station" '{running:true,paused:($paused == true),volume:($volume|floor),station:$station,error:""}')"
+}
+
+start_player() {
+  local origin=$1 name=$2 volume pid start
+  volume=$(configured_volume)
+  rm -f "$socket"
+  setsid mpv \
+    --no-video \
+    --force-window=no \
+    --audio-display=no \
+    --idle=yes \
+    --cache-secs=20 \
+    --demuxer-max-bytes=8MiB \
+    --demuxer-max-back-bytes=2MiB \
+    --network-timeout=30 \
+    --volume="$volume" \
+    --volume-max=100 \
+    --input-ipc-server="$socket" \
+    --no-terminal \
+    --really-quiet \
+    "$origin/stream.mp3" >"$log_file" 2>&1 8>&- &
+  pid=$!
+  start=$(process_start_time "$pid") || { kill "$pid" 2>/dev/null || true; return 1; }
+  printf '%s %s\n' "$pid" "$start" >"$pid_file"
+  for _ in $(seq 1 150); do
+    [[ -S $socket ]] && break
+    sleep 0.02
+  done
+  if [[ ! -S $socket ]]; then
+    kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+    rm -f "$pid_file" "$socket"
+    return 1
+  fi
+  write_station "$origin" "$name"
+}
+
+play() {
+  local origin name payload
+  origin=$(normalize_origin "${1:-}") || { echo "Station URL must be an HTTP(S) origin" >&2; exit 2; }
+  name=${2:-SUB/WAVE}
+  if player_alive && [[ -S $socket ]]; then
+    payload=$(jq -cn --arg url "$origin/stream.mp3" '{command:["loadfile",$url,"replace"]}')
+    send_command "$payload" >/dev/null || { echo "Player could not load station" >&2; exit 4; }
+    write_station "$origin" "$name"
+  else
+    cleanup_stale || true
+    start_player "$origin" "$name" || { echo "Player could not start" >&2; exit 4; }
+  fi
+  status
+}
+
+set_volume() {
+  local volume=${1:-} payload state
+  [[ $volume =~ ^[0-9]+$ ]] && (( volume >= 0 && volume <= 100 )) \
+    || { echo "Volume must be an integer from 0 to 100" >&2; exit 2; }
+  if player_alive && [[ -S $socket ]]; then
+    payload=$(jq -cn --argjson volume "$volume" '{command:["set_property","volume",$volume]}')
+    send_command "$payload" >/dev/null || { echo "Player volume could not be changed" >&2; exit 4; }
+  fi
+  state=$(read_state | jq -c --argjson volume "$volume" '.volume = $volume')
+  write_state "$state"
+  status
+}
+
+transport() {
+  local payload=$1
+  player_alive && [[ -S $socket ]] || { echo "Player is unavailable" >&2; exit 4; }
+  send_command "$payload" >/dev/null || { echo "Player command failed" >&2; exit 4; }
+  status
+}
+
+stop_player() {
+  local pid
+  if ! player_alive; then
+    cleanup_stale || true
+    status
+    return
+  fi
+  read -r pid _ <"$pid_file"
+  send_command '{"command":["quit"]}' >/dev/null 2>&1 || true
+  for _ in $(seq 1 100); do
+    player_alive || break
+    sleep 0.02
+  done
+  if player_alive; then
+    kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+  fi
+  for _ in $(seq 1 50); do
+    player_alive || break
+    sleep 0.02
+  done
+  if player_alive; then
+    kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+  fi
+  rm -f "$pid_file" "$socket" "$station_file"
+  status
+}
+
+flock -x 8
+case ${1:-status} in
+  play) play "${2:-}" "${3:-SUB/WAVE}" ;;
+  toggle) transport '{"command":["cycle","pause"]}' ;;
+  pause) transport '{"command":["set_property","pause",true]}' ;;
+  stop) stop_player ;;
+  volume) set_volume "${2:-}" ;;
+  status) status ;;
+  *) echo "Usage: subwave-player play|toggle|pause|stop|volume|status" >&2; exit 2 ;;
+esac
