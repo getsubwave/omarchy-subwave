@@ -13,6 +13,18 @@ that works with Omarchy's existing media controls.
 omarchy plugin add https://github.com/getsubwave/omarchy-subwave.git --enable
 ```
 
+## Dependencies
+
+The plugin requires Omarchy Quattro and these Arch packages:
+
+```text
+curl jq mpv mpv-mpris socat
+```
+
+They provide the public station fetcher, JSON validation, guarded audio player,
+MPRIS integration, and local MPV control socket. The plugin does not install or
+modify system packages itself.
+
 The community directory works immediately. To put your own self-hosted station
 first in the list, configure its bare public origin:
 
